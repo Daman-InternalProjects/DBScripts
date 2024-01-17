@@ -4,7 +4,7 @@ LANGUAGE SQL
 AS
 $$
 BEGIN
-RETURN "Hello! Good Morning";
+RETURN 'Hello! Good Morning';
 END
 ;
 $$
