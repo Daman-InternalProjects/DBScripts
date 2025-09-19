@@ -1,0 +1,2202 @@
+{
+    "name": "sage_bank_txns_recon",
+    "properties": {
+        "activities": [
+            {
+                "name": "ForEach1",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Get GL Mapping",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Get GL Mapping').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": false,
+                    "batchCount": 1,
+                    "activities": [
+                        {
+                            "name": "Transaction_feed",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Bank_XML_Data",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Generate_bank_feed",
+                                "value": {
+                                    "value": "@concat('<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<request>\n  <control>\n    <senderid>',pipeline().parameters.senderid,'</senderid>\n    <password>',variables('sender_pass'),'</password>\n    <controlid>1713543436</controlid>\n    <uniqueid>false</uniqueid>\n    <dtdversion>3.0</dtdversion>\n    <includewhitespace>false</includewhitespace>\n  </control>\n  <operation>\n    <authentication>\n      <sessionid>',variables('Session_id'),'</sessionid>\n    </authentication>\n    <content>\n      <function controlid=\"4d150818-76d0-49be-b03b-4d1802ea8175\">\n        <create>\n          <BANKACCTTXNFEED>\n            <FINANCIALENTITY>',item().BANKACCOUNTID ,'</FINANCIALENTITY>\n            <FEEDDATE>',pipeline().parameters.FEEDDATE,'</FEEDDATE>\n            <FEEDTYPE>xml</FEEDTYPE>\n            <FILENAME>LOADED from API</FILENAME>\n\t\t\t<BANKACCTTXNRECORDS>',\n\t\t\tvariables('XML_DATA'),\n\t\t\t'</BANKACCTTXNRECORDS>\n          </BANKACCTTXNFEED>\n        </create>\n      </function>\n    </content>\n  </operation>\n</request>')",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Reconciliation_feed",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get_transaction_xml",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Recnciliation_data",
+                                "value": {
+                                    "value": "@concat('<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<request>\n  <control>\n    <senderid>',pipeline().parameters.senderid,'</senderid>\n        <password>',variables('sender_pass'),'</password>\n    <controlid>1713543436</controlid>\n    <uniqueid>false</uniqueid>\n    <dtdversion>3.0</dtdversion>\n    <includewhitespace>false</includewhitespace>\n  </control>\n  <operation>\n    <authentication>\n      <sessionid>',variables('Session_id'),'</sessionid>\n    </authentication>\n    <content>\n      <function controlid=\"4d150818-76d0-49be-b03b-4d1802ea8175\">\n        <create>\n          <BANKACCTRECON>\n            <FINANCIALENTITY>',item().BANKACCOUNTID,'</FINANCIALENTITY>\n            <STMTENDINGDATE>',pipeline().parameters.STMTENDINGDATE,'</STMTENDINGDATE>\n            <CUTOFFDATE>',pipeline().parameters.CUTOFFDATE,'</CUTOFFDATE>\n            <STMTENDINGBALANCE>0</STMTENDINGBALANCE>\n            <MODE>AutomatchReview</MODE>\n          </BANKACCTRECON>\n        </create>\n      </function>\n    </content>\n  </operation>\n</request>')",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Reconciliation",
+                            "type": "Lookup",
+                            "dependsOn": [
+                                {
+                                    "activity": "Reconciliation_feed",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                {
+                                    "activity": "Get_Bank_feed_response",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "XmlSource",
+                                    "storeSettings": {
+                                        "type": "HttpReadSettings",
+                                        "requestMethod": "POST",
+                                        "requestBody": {
+                                            "value": "@variables('Recnciliation_data')",
+                                            "type": "Expression"
+                                        },
+                                        "requestTimeout": ""
+                                    },
+                                    "formatSettings": {
+                                        "type": "XmlReadSettings",
+                                        "validationMode": "none",
+                                        "namespaces": true
+                                    }
+                                },
+                                "dataset": {
+                                    "referenceName": "SAGE_REQUEST_XML",
+                                    "type": "DatasetReference"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Post_bank_feed",
+                            "type": "Lookup",
+                            "dependsOn": [
+                                {
+                                    "activity": "Transaction_feed",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "XmlSource",
+                                    "storeSettings": {
+                                        "type": "HttpReadSettings",
+                                        "requestMethod": "POST",
+                                        "requestBody": {
+                                            "value": "@variables('Generate_bank_feed')",
+                                            "type": "Expression"
+                                        },
+                                        "requestTimeout": ""
+                                    },
+                                    "formatSettings": {
+                                        "type": "XmlReadSettings",
+                                        "validationMode": "none",
+                                        "namespaces": true
+                                    }
+                                },
+                                "dataset": {
+                                    "referenceName": "SAGE_REQUEST_XML",
+                                    "type": "DatasetReference"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Bank_XML_Data",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get_transaction_xml",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "XML_DATA",
+                                "value": {
+                                    "value": "@activity('Get_transaction_xml').output.value[0].xml",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Get_Bank_feed_response",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Post_bank_feed",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Bank_feed_response",
+                                "value": {
+                                    "value": "@concat(activity('Post_bank_feed').output.firstRow.response.operation.result.data.bankaccttxnfeed.RECORDNO,' ')",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Get_reconcilation_response",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Reconciliation",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Get_Bank_reconciliation_response",
+                                "value": {
+                                    "value": "@concat(activity('Reconciliation').output.firstRow.response.operation.result.data.bankacctrecon.RECORDNO, ' ')",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Get_transaction_xml",
+                            "type": "Lookup",
+                            "dependsOn": [
+                                {
+                                    "activity": "start_time",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                {
+                                    "activity": "Account_Name",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                {
+                                    "activity": "LOCATION_ID",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                {
+                                    "activity": "Account_number",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                {
+                                    "activity": "ID",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                {
+                                    "activity": "Transaction_count",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "SqlPoolSource",
+                                    "sqlReaderQuery": {
+                                        "value": "SELECT STRING_AGG(cast(K.xml as varchar(max)),'   ') as xml from (select     '<BANKACCTTXNRECORD><POSTINGDATE>'+T.POSTINGDATE+'</POSTINGDATE>'+    '<TRANSACTIONTYPE>'+T.TRANSACTIONTYPE+'</TRANSACTIONTYPE>'+'<DOCTYPE>'+T.DOCUMENTTYPE+'</DOCTYPE>'+'<BANKREFNUMBER>'+T.BANKREFNUMBER+'</BANKREFNUMBER>'+  '<PAYEE>'+T.PAYEE+'</PAYEE>'+ '<AMOUNT>'+cast(T.AMOUNT as varchar)+'</AMOUNT>'+   '<DESCRIPTION>'+T.DESCRIPTION+'</DESCRIPTION></BANKACCTTXNRECORD>'  as xml     from     \n(select  cast(POSTINGDATE as varchar) as POSTINGDATE ,case when credit_Amt='0' then 'Withdrawal' else 'Deposit' end  as [TRANSACTIONTYPE],\n''  as [DOCUMENTTYPE],ISNULL(Bank_Reference,'')  as [BANKREFNUMBER] \n,Customer_Ref_No as [PAYEE],(cast(credit_Amt as decimal(20,2))-cast(Debit_Amt as decimal(20,2))) as [AMOUNT],replace(DESCRIPTION,'&','&amp;') as DESCRIPTION\nfrom  @{pipeline().parameters.schema}.vw_bank_base_Transactions_status where txn_status <>'Processed' and   TRANSACTION_AS_OF_DATE  like '@{pipeline().parameters.txndate}'  and Acct_No ='@{item().Account_number}' ) T ) K",
+                                        "type": "Expression"
+                                    },
+                                    "queryTimeout": "02:00:00"
+                                },
+                                "dataset": {
+                                    "referenceName": "amerivetdspDataWarehouse",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "SchemaName": "@pipeline().parameters.schema",
+                                        "TableName": "bank_base_transactions"
+                                    }
+                                },
+                                "firstRowOnly": false
+                            }
+                        },
+                        {
+                            "name": "start_time",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Set  Session_id",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "START_TIME",
+                                "value": {
+                                    "value": "@convertTimeZone(utcNow(),'UTC','Central Standard Time')",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "end_time",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get_reconcilation_response",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "END_TIME",
+                                "value": {
+                                    "value": "@convertTimeZone(utcNow(),'UTC','Central Standard Time')",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Insert Script",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "sage_bnk_txn_data",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                {
+                                    "activity": "sage_recon_data",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Insert_audit",
+                                "value": {
+                                    "value": "INSERT into @{pipeline().parameters.schema}.bank_sage_recon_audit (START_TIME,END_TIME,FINANCIAL_ENTITY,ACCT_NO,ACCT_NAME,STATUS,LOCATION_ID,BANK_FEED_RECORD_NO,RECON_RECORD_NO,TRANSACTIONS_COUNT,MESSAGE,PIPELINE_RUNID,ROWUPDATEDATETIME, ROWINSERTEXECID,ROWUPDATEEXECID,ROWINSERTDATETIME,ROWDELETEIND ) select '@{variables('START_TIME')}','@{variables('END_TIME')}','@{variables('ID')}','@{variables('Account_number')}','@{replace(variables('Account_Name'),'''','''''')}','LOADED','@{variables('LOCATION_ID')}','@{variables('Bank_feed_response')}','@{variables('Get_Bank_reconciliation_response')}','@{variables('Transaction_count')}','','@{pipeline().RunId}',GETDATE(),'@{pipeline().RunId}','@{pipeline().RunId}',GETDATE(),0",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "ID",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Set  Session_id",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "ID",
+                                "value": {
+                                    "value": "@item().BANKACCOUNTID",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Account_number",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Set  Session_id",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Account_number",
+                                "value": {
+                                    "value": "@item().Account_number",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Account_Name",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Set  Session_id",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Account_Name",
+                                "value": {
+                                    "value": "@item().Account_Name",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "LOCATION_ID",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Set  Session_id",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "LOCATION_ID",
+                                "value": {
+                                    "value": "@item().LOCATION_ID",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Transaction_count",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "Set  Session_id",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Transaction_count",
+                                "value": {
+                                    "value": "@item().Transaction_count",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Update_audit",
+                            "type": "Script",
+                            "dependsOn": [
+                                {
+                                    "activity": "Insert Script",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "linkedServiceName": {
+                                "referenceName": "AmerivetDWHDev",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "scripts": [
+                                    {
+                                        "type": "Query",
+                                        "text": {
+                                            "value": "@variables('Insert_audit')",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                ],
+                                "scriptBlockExecutionTimeout": "02:00:00"
+                            }
+                        },
+                        {
+                            "name": "API_session",
+                            "type": "Lookup",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "XmlSource",
+                                    "storeSettings": {
+                                        "type": "HttpReadSettings",
+                                        "requestMethod": "POST",
+                                        "requestBody": {
+                                            "value": "@concat('<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<request>\n  <control>\n    <senderid>',pipeline().parameters.senderid,'</senderid>\n    <password>',variables('sender_pass'),'</password>\n    <controlid>1713542391</controlid>\n    <uniqueid>false</uniqueid>\n    <dtdversion>3.0</dtdversion>\n    <includewhitespace>false</includewhitespace>\n  </control>\n  <operation>\n    <authentication>\n      <login>\n        <userid>',pipeline().parameters.userid,'</userid>\n        <companyid>',pipeline().parameters.env,'</companyid>\n        <password>',variables('user_pass'),'</password>\n        <locationid>',if(equals(item().PARENTID,null),'',item().LOCATION_ID),'</locationid>\n      </login>\n    </authentication>\n    <content>\n      <function controlid=\"3000b96c-1e4e-4aa3-a43b-65877929b77f\">\n        <getAPISession />\n      </function>\n    </content>\n  </operation>\n</request>')",
+                                            "type": "Expression"
+                                        },
+                                        "requestTimeout": ""
+                                    },
+                                    "formatSettings": {
+                                        "type": "XmlReadSettings",
+                                        "validationMode": "none",
+                                        "namespaces": true
+                                    }
+                                },
+                                "dataset": {
+                                    "referenceName": "SAGE_REQUEST_XML",
+                                    "type": "DatasetReference"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Set  Session_id",
+                            "type": "SetVariable",
+                            "dependsOn": [
+                                {
+                                    "activity": "API_session",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "variableName": "Session_id",
+                                "value": {
+                                    "value": "@activity('API_session').output.firstRow.response.operation.result.data.api.sessionid",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "failed_get_trans_xml",
+                            "type": "Script",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get_transaction_xml",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "linkedServiceName": {
+                                "referenceName": "AmerivetDWHDev",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "scripts": [
+                                    {
+                                        "type": "Query",
+                                        "text": {
+                                            "value": "INSERT into @{pipeline().parameters.schema}.bank_sage_recon_audit (START_TIME,END_TIME,FINANCIAL_ENTITY,ACCT_NO,ACCT_NAME,STATUS,LOCATION_ID,BANK_FEED_RECORD_NO,RECON_RECORD_NO,TRANSACTIONS_COUNT,MESSAGE,PIPELINE_RUNID,ROWUPDATEDATETIME, ROWINSERTEXECID,ROWUPDATEEXECID,ROWINSERTDATETIME,ROWDELETEIND ) VALUES ('@{variables('START_TIME')}','@{variables('END_TIME')}','@{variables('ID')}','@{variables('Account_number')}','@{variables('Account_Name')}','FAILED','@{variables('LOCATION_ID')}','@{variables('Bank_feed_response')}','@{variables('Get_Bank_reconciliation_response')}','@{variables('Transaction_count')}','','@{pipeline().RunId}','@{variables('END_TIME')}','@{pipeline().RunId}','@{pipeline().RunId}','@{variables('END_TIME')}',0)",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                ],
+                                "scriptBlockExecutionTimeout": "02:00:00"
+                            }
+                        },
+                        {
+                            "name": "failed_post_bank_feed",
+                            "type": "Script",
+                            "dependsOn": [
+                                {
+                                    "activity": "Post_bank_feed",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "linkedServiceName": {
+                                "referenceName": "AmerivetDWHDev",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "scripts": [
+                                    {
+                                        "type": "Query",
+                                        "text": {
+                                            "value": "INSERT into @{pipeline().parameters.schema}.bank_sage_recon_audit (START_TIME,END_TIME,FINANCIAL_ENTITY,ACCT_NO,ACCT_NAME,STATUS,LOCATION_ID,BANK_FEED_RECORD_NO,RECON_RECORD_NO,TRANSACTIONS_COUNT,MESSAGE,PIPELINE_RUNID,ROWUPDATEDATETIME, ROWINSERTEXECID,ROWUPDATEEXECID,ROWINSERTDATETIME,ROWDELETEIND ) VALUES ('@{variables('START_TIME')}','@{variables('END_TIME')}','@{variables('ID')}','@{variables('Account_number')}','@{variables('Account_Name')}','FAILED','@{variables('LOCATION_ID')}','@{variables('Bank_feed_response')}','@{variables('Get_Bank_reconciliation_response')}','@{variables('Transaction_count')}','','@{pipeline().RunId}','@{variables('END_TIME')}','@{pipeline().RunId}','@{pipeline().RunId}','@{variables('END_TIME')}',0)",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                ],
+                                "scriptBlockExecutionTimeout": "02:00:00"
+                            }
+                        },
+                        {
+                            "name": "failed_get_bank_feed_response",
+                            "type": "Script",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get_Bank_feed_response",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "linkedServiceName": {
+                                "referenceName": "AmerivetDWHDev",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "scripts": [
+                                    {
+                                        "type": "Query",
+                                        "text": {
+                                            "value": "INSERT into @{pipeline().parameters.schema}.bank_sage_recon_audit (START_TIME,END_TIME,FINANCIAL_ENTITY,ACCT_NO,ACCT_NAME,STATUS,LOCATION_ID,BANK_FEED_RECORD_NO,RECON_RECORD_NO,TRANSACTIONS_COUNT,MESSAGE,PIPELINE_RUNID,ROWUPDATEDATETIME, ROWINSERTEXECID,ROWUPDATEEXECID,ROWINSERTDATETIME,ROWDELETEIND ) VALUES ('@{variables('START_TIME')}','@{variables('END_TIME')}','@{variables('ID')}','@{variables('Account_number')}','@{variables('Account_Name')}','FAILED','@{variables('LOCATION_ID')}','@{variables('Bank_feed_response')}','@{variables('Get_Bank_reconciliation_response')}','@{variables('Transaction_count')}','','@{pipeline().RunId}','@{variables('END_TIME')}','@{pipeline().RunId}','@{pipeline().RunId}','@{variables('END_TIME')}',0)",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                ],
+                                "scriptBlockExecutionTimeout": "02:00:00"
+                            }
+                        },
+                        {
+                            "name": "failed_reconcilitaion_Api",
+                            "type": "Script",
+                            "dependsOn": [
+                                {
+                                    "activity": "Reconciliation",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "linkedServiceName": {
+                                "referenceName": "AmerivetDWHDev",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "scripts": [
+                                    {
+                                        "type": "Query",
+                                        "text": {
+                                            "value": "INSERT into @{pipeline().parameters.schema}.bank_sage_recon_audit (START_TIME,END_TIME,FINANCIAL_ENTITY,ACCT_NO,ACCT_NAME,STATUS,LOCATION_ID,BANK_FEED_RECORD_NO,RECON_RECORD_NO,TRANSACTIONS_COUNT,MESSAGE,PIPELINE_RUNID,ROWUPDATEDATETIME, ROWINSERTEXECID,ROWUPDATEEXECID,ROWINSERTDATETIME,ROWDELETEIND ) VALUES ('@{variables('START_TIME')}','@{variables('END_TIME')}','@{variables('ID')}','@{variables('Account_number')}','@{variables('Account_Name')}','FAILED','@{variables('LOCATION_ID')}','@{variables('Bank_feed_response')}','@{variables('Get_Bank_reconciliation_response')}','@{variables('Transaction_count')}','','@{pipeline().RunId}','@{variables('END_TIME')}','@{pipeline().RunId}','@{pipeline().RunId}','@{variables('END_TIME')}',0)",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                ],
+                                "scriptBlockExecutionTimeout": "02:00:00"
+                            }
+                        },
+                        {
+                            "name": "failed_reconcilitaion_response_api",
+                            "type": "Script",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get_reconcilation_response",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "linkedServiceName": {
+                                "referenceName": "AmerivetDWHDev",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "scripts": [
+                                    {
+                                        "type": "Query",
+                                        "text": {
+                                            "value": "INSERT into @{pipeline().parameters.schema}.bank_sage_recon_audit (START_TIME,END_TIME,FINANCIAL_ENTITY,ACCT_NO,ACCT_NAME,STATUS,LOCATION_ID,BANK_FEED_RECORD_NO,RECON_RECORD_NO,TRANSACTIONS_COUNT,MESSAGE,PIPELINE_RUNID,ROWUPDATEDATETIME, ROWINSERTEXECID,ROWUPDATEEXECID,ROWINSERTDATETIME,ROWDELETEIND ) VALUES ('@{variables('START_TIME')}','@{variables('END_TIME')}','@{variables('ID')}','@{variables('Account_number')}','@{variables('Account_Name')}','FAILED','@{variables('LOCATION_ID')}','@{variables('Bank_feed_response')}','@{variables('Get_Bank_reconciliation_response')}','@{variables('Transaction_count')}','','@{pipeline().RunId}','@{variables('END_TIME')}','@{pipeline().RunId}','@{pipeline().RunId}','@{variables('END_TIME')}',0)",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                ],
+                                "scriptBlockExecutionTimeout": "02:00:00"
+                            }
+                        },
+                        {
+                            "name": "get_bankfeeddata",
+                            "type": "Copy",
+                            "dependsOn": [
+                                {
+                                    "activity": "end_time",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "RestSource",
+                                    "httpRequestTimeout": "00:01:40",
+                                    "requestInterval": "00.00:00:00.010",
+                                    "requestMethod": "POST",
+                                    "requestBody": {
+                                        "value": "@concat('<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<request>\n  <control>\n    <senderid>',pipeline().parameters.senderid,'</senderid>\n    <password>',variables('sender_pass'),'</password>\n    <controlid>1713543436</controlid>\n    <uniqueid>false</uniqueid>\n    <dtdversion>3.0</dtdversion>\n    <includewhitespace>false</includewhitespace>\n  </control>\n  <operation>\n    <authentication>\n      <sessionid>',variables('Session_id'),'</sessionid>\n    </authentication>\n\t\t<content>              \n            <function controlid=\"4d150818-76d0-49be-b03b-4d1802ea8175\">    <read>                                \n                    <object>BANKACCTTXNFEED</object>\n                    <keys>',variables('Bank_feed_response'),'</keys>\n                    <fields>*</fields>\n                    <returnFormat>json</returnFormat>\n                </read>              \n            </function>\n        </content>\n    </operation>\n</request>')\n\n",
+                                        "type": "Expression"
+                                    },
+                                    "paginationRules": {
+                                        "supportRFC5988": "true"
+                                    }
+                                },
+                                "sink": {
+                                    "type": "DelimitedTextSink",
+                                    "storeSettings": {
+                                        "type": "AzureBlobFSWriteSettings",
+                                        "maxConcurrentConnections": 1,
+                                        "blockSizeInMB": 10
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextWriteSettings",
+                                        "quoteAllText": true,
+                                        "fileExtension": ".txt"
+                                    }
+                                },
+                                "enableStaging": false,
+                                "translator": {
+                                    "type": "TabularTranslator",
+                                    "mappings": [
+                                        {
+                                            "source": {
+                                                "path": "['RECORDNO']"
+                                            },
+                                            "sink": {
+                                                "name": "RECORDNO",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FINANCIALENTITY']"
+                                            },
+                                            "sink": {
+                                                "name": "FINANCIALENTITY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FINANCIALENTITYNAME']"
+                                            },
+                                            "sink": {
+                                                "name": "FINANCIALENTITYNAME",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FINANCIALACCOUNTTYPE']"
+                                            },
+                                            "sink": {
+                                                "name": "FINANCIALACCOUNTTYPE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FINACCTTXNFEEDKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "FINACCTTXNFEEDKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['TRANSACTIONID']"
+                                            },
+                                            "sink": {
+                                                "name": "TRANSACTIONID",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['BANKACCTRECONKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "BANKACCTRECONKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['POSTINGDATE']"
+                                            },
+                                            "sink": {
+                                                "name": "POSTINGDATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['RECDATE']"
+                                            },
+                                            "sink": {
+                                                "name": "RECDATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['TRANSACTIONTYPE']"
+                                            },
+                                            "sink": {
+                                                "name": "TRANSACTIONTYPE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DOCTYPE']"
+                                            },
+                                            "sink": {
+                                                "name": "DOCTYPE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DOCNO']"
+                                            },
+                                            "sink": {
+                                                "name": "DOCNO",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEE']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['AMOUNT']"
+                                            },
+                                            "sink": {
+                                                "name": "AMOUNT",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DESCRIPTION']"
+                                            },
+                                            "sink": {
+                                                "name": "DESCRIPTION",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CLEARED']"
+                                            },
+                                            "sink": {
+                                                "name": "CLEARED",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['AMOUNTTOMATCH']"
+                                            },
+                                            "sink": {
+                                                "name": "AMOUNTTOMATCH",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['WHENCREATED']"
+                                            },
+                                            "sink": {
+                                                "name": "WHENCREATED",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['WHENMODIFIED']"
+                                            },
+                                            "sink": {
+                                                "name": "WHENMODIFIED",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CREATEDBY']"
+                                            },
+                                            "sink": {
+                                                "name": "CREATEDBY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['MODIFIEDBY']"
+                                            },
+                                            "sink": {
+                                                "name": "MODIFIEDBY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FEEDTYPE']"
+                                            },
+                                            "sink": {
+                                                "name": "FEEDTYPE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DETAILEDFEEDTYPE']"
+                                            },
+                                            "sink": {
+                                                "name": "DETAILEDFEEDTYPE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FINANCIALENTITYRECORDNO']"
+                                            },
+                                            "sink": {
+                                                "name": "FINANCIALENTITYRECORDNO",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CURRENCY']"
+                                            },
+                                            "sink": {
+                                                "name": "CURRENCY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CUSTOMERKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "CUSTOMERKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CUSTOMERID']"
+                                            },
+                                            "sink": {
+                                                "name": "CUSTOMERID",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CUSTOMERNAME']"
+                                            },
+                                            "sink": {
+                                                "name": "CUSTOMERNAME",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['TXNSTATUS']"
+                                            },
+                                            "sink": {
+                                                "name": "TXNSTATUS",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEEID']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEEID",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEEADDRESS']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEEADDRESS",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEECITY']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEECITY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEESTATE']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEESTATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEEZIP']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEEZIP",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CATEGORY']"
+                                            },
+                                            "sink": {
+                                                "name": "CATEGORY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['SUBCATEGORY']"
+                                            },
+                                            "sink": {
+                                                "name": "SUBCATEGORY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CATEGORYID']"
+                                            },
+                                            "sink": {
+                                                "name": "CATEGORYID",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['EXTENDEDDESC']"
+                                            },
+                                            "sink": {
+                                                "name": "EXTENDEDDESC",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['BANKREFNUMBER']"
+                                            },
+                                            "sink": {
+                                                "name": "BANKREFNUMBER",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FILENAME']"
+                                            },
+                                            "sink": {
+                                                "name": "FILENAME",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['IMPORTID']"
+                                            },
+                                            "sink": {
+                                                "name": "IMPORTID",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FEEDDATE']"
+                                            },
+                                            "sink": {
+                                                "name": "FEEDDATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['BANKTXNRULEKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "BANKTXNRULEKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['LETTRAGECODE']"
+                                            },
+                                            "sink": {
+                                                "name": "LETTRAGECODE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DISPLAYLETTRAGECODE']"
+                                            },
+                                            "sink": {
+                                                "name": "DISPLAYLETTRAGECODE",
+                                                "type": "String"
+                                            }
+                                        }
+                                    ],
+                                    "collectionReference": "$['BANKACCTTXNRECORDS']['bankaccttxnrecord']",
+                                    "mapComplexValuesToString": true
+                                }
+                            },
+                            "inputs": [
+                                {
+                                    "referenceName": "SAGE_API_REST_XML",
+                                    "type": "DatasetReference"
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "referenceName": "DataLakeCSV",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "FilePath": {
+                                            "value": "/tmp/sagedata/@{pipeline().RunId}/@{item().Account_number}",
+                                            "type": "Expression"
+                                        },
+                                        "FileName": "bank_feed.csv"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "name": "sage_bnk_txn_data",
+                            "type": "Copy",
+                            "dependsOn": [
+                                {
+                                    "activity": "get_bankfeeddata",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "DelimitedTextSource",
+                                    "additionalColumns": [
+                                        {
+                                            "name": "ROWINSERTEXECID",
+                                            "value": {
+                                                "value": "@pipeline().RunId",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWINSERTDATETIME",
+                                            "value": {
+                                                "value": "@convertTimeZone(utcNow(),'UTC','Central Standard Time')",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWUPDATEEXECID",
+                                            "value": {
+                                                "value": "@pipeline().RunId",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWUPDATEDATETIME",
+                                            "value": {
+                                                "value": "@convertTimeZone(utcNow(),'UTC','Central Standard Time')",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWNUM",
+                                            "value": "0"
+                                        }
+                                    ],
+                                    "storeSettings": {
+                                        "type": "AzureBlobFSReadSettings",
+                                        "recursive": true,
+                                        "enablePartitionDiscovery": false
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextReadSettings"
+                                    }
+                                },
+                                "sink": {
+                                    "type": "SqlPoolSink",
+                                    "writeBehavior": "Insert"
+                                },
+                                "enableStaging": false,
+                                "translator": {
+                                    "type": "TabularTranslator",
+                                    "typeConversion": true,
+                                    "typeConversionSettings": {
+                                        "allowDataTruncation": true,
+                                        "treatBooleanAsNumber": false
+                                    }
+                                }
+                            },
+                            "inputs": [
+                                {
+                                    "referenceName": "DataLakeCSV",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "FilePath": {
+                                            "value": "/tmp/sagedata/@{pipeline().RunId}/@{item().Account_number}",
+                                            "type": "Expression"
+                                        },
+                                        "FileName": "bank_feed.csv"
+                                    }
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "referenceName": "amerivetdspDataWarehouse",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "SchemaName": "@pipeline().parameters.schema",
+                                        "TableName": "sage_bank_feed_data"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "name": "getrecon_data",
+                            "type": "Copy",
+                            "dependsOn": [
+                                {
+                                    "activity": "end_time",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "RestSource",
+                                    "additionalColumns": [
+                                        {
+                                            "name": "ROWINSERTEXECID",
+                                            "value": {
+                                                "value": "@pipeline().RunId",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWINSERTDATETIME",
+                                            "value": {
+                                                "value": "@convertTimeZone(utcNow(),'UTC','Central Standard Time')",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWUPDATEEXECID",
+                                            "value": {
+                                                "value": "@pipeline().RunId",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWUPDATEDATETIME",
+                                            "value": {
+                                                "value": "@convertTimeZone(utcNow(),'UTC','Central Standard Time')",
+                                                "type": "Expression"
+                                            }
+                                        },
+                                        {
+                                            "name": "ROWDELETEIND",
+                                            "value": {
+                                                "value": "0",
+                                                "type": "Expression"
+                                            }
+                                        }
+                                    ],
+                                    "httpRequestTimeout": "00:01:40",
+                                    "requestInterval": "00.00:00:00.010",
+                                    "requestMethod": "POST",
+                                    "requestBody": {
+                                        "value": "@concat('<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<request>\n  <control>\n    <senderid>',pipeline().parameters.senderid,'</senderid>\n    <password>',variables('sender_pass'),'</password>\n    <controlid>1713543436</controlid>\n    <uniqueid>false</uniqueid>\n    <dtdversion>3.0</dtdversion>\n    <includewhitespace>false</includewhitespace>\n  </control>\n  <operation>\n    <authentication>\n      <sessionid>',variables('Session_id'),'</sessionid>\n    </authentication>\n\t\t<content>              \n            <function controlid=\"4d150818-76d0-49be-b03b-4d1802ea8175\">                                        \n                <read>                                \n                    <object>BANKACCTRECON</object>\n                    <keys>',variables('Get_Bank_reconciliation_response'),'</keys>\n                    <fields>*</fields>\n                    <returnFormat>json</returnFormat>\n                </read>              \n            </function>\n        </content>\n    </operation>\n</request>')",
+                                        "type": "Expression"
+                                    },
+                                    "paginationRules": {
+                                        "supportRFC5988": "true"
+                                    }
+                                },
+                                "sink": {
+                                    "type": "DelimitedTextSink",
+                                    "storeSettings": {
+                                        "type": "AzureBlobFSWriteSettings",
+                                        "maxConcurrentConnections": 1,
+                                        "blockSizeInMB": 10
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextWriteSettings",
+                                        "quoteAllText": true,
+                                        "fileExtension": ".txt"
+                                    }
+                                },
+                                "enableStaging": false,
+                                "translator": {
+                                    "type": "TabularTranslator",
+                                    "mappings": [
+                                        {
+                                            "source": {
+                                                "path": "['BANKACCTRECONKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "BANKACCTRECONKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['ACCTRECONRECORDKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "ACCTRECONRECORDKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['RECORDKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "RECORDKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['RECORDTYPE']"
+                                            },
+                                            "sink": {
+                                                "name": "RECORDTYPE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PRRECORDKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "PRRECORDKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['GLENTRYKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "GLENTRYKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['IOITEMSKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "IOITEMSKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['SIOITEMSKEY']"
+                                            },
+                                            "sink": {
+                                                "name": "SIOITEMSKEY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['TRANSACTIONTYPE']"
+                                            },
+                                            "sink": {
+                                                "name": "TRANSACTIONTYPE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DOCNO']"
+                                            },
+                                            "sink": {
+                                                "name": "DOCNO",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DOCDATE']"
+                                            },
+                                            "sink": {
+                                                "name": "DOCDATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['TRX_AMOUNT']"
+                                            },
+                                            "sink": {
+                                                "name": "TRX_AMOUNT",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['AMOUNT']"
+                                            },
+                                            "sink": {
+                                                "name": "AMOUNT",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CURRENCY']"
+                                            },
+                                            "sink": {
+                                                "name": "CURRENCY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['BASECURRENCY']"
+                                            },
+                                            "sink": {
+                                                "name": "BASECURRENCY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['POSTINGDATE']"
+                                            },
+                                            "sink": {
+                                                "name": "POSTINGDATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['RECDATE']"
+                                            },
+                                            "sink": {
+                                                "name": "RECDATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEE']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DESCRIPTION']"
+                                            },
+                                            "sink": {
+                                                "name": "DESCRIPTION",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CLEARED']"
+                                            },
+                                            "sink": {
+                                                "name": "CLEARED",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DISPLAYLETTRAGECODE']"
+                                            },
+                                            "sink": {
+                                                "name": "DISPLAYLETTRAGECODE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['MATCHMODE']"
+                                            },
+                                            "sink": {
+                                                "name": "MATCHMODE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['WHENMATCHED']"
+                                            },
+                                            "sink": {
+                                                "name": "WHENMATCHED",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DOCNO_ORIG']"
+                                            },
+                                            "sink": {
+                                                "name": "DOCNO_ORIG",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['PAYEE_ORIG']"
+                                            },
+                                            "sink": {
+                                                "name": "PAYEE_ORIG",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['DESCRIPTION_ORIG']"
+                                            },
+                                            "sink": {
+                                                "name": "DESCRIPTION_ORIG",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['RECORDNO']"
+                                            },
+                                            "sink": {
+                                                "name": "RECORDNO",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['FINANCIALENTITY']"
+                                            },
+                                            "sink": {
+                                                "name": "FINANCIALENTITY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['STATE']"
+                                            },
+                                            "sink": {
+                                                "name": "STATE",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['WHENCREATED']"
+                                            },
+                                            "sink": {
+                                                "name": "WHENCREATED",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['WHENMODIFIED']"
+                                            },
+                                            "sink": {
+                                                "name": "WHENMODIFIED",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['CREATEDBY']"
+                                            },
+                                            "sink": {
+                                                "name": "CREATEDBY",
+                                                "type": "String"
+                                            }
+                                        },
+                                        {
+                                            "source": {
+                                                "path": "['MODIFIEDBY']"
+                                            },
+                                            "sink": {
+                                                "name": "MODIFIEDBY",
+                                                "type": "String"
+                                            }
+                                        }
+                                    ],
+                                    "collectionReference": "$['BANKACCTRECONRECORDS']['bankacctreconrecord']",
+                                    "mapComplexValuesToString": true
+                                }
+                            },
+                            "inputs": [
+                                {
+                                    "referenceName": "SAGE_API_REST_XML",
+                                    "type": "DatasetReference"
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "referenceName": "DataLakeCSV",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "FilePath": {
+                                            "value": "/tmp/sagedata/@{pipeline().RunId}/@{item().Account_number}",
+                                            "type": "Expression"
+                                        },
+                                        "FileName": "Bankreconciliation_response_from_sage.csv"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "name": "sage_recon_data",
+                            "type": "Copy",
+                            "dependsOn": [
+                                {
+                                    "activity": "getrecon_data",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "DelimitedTextSource",
+                                    "storeSettings": {
+                                        "type": "AzureBlobFSReadSettings",
+                                        "recursive": true,
+                                        "enablePartitionDiscovery": false
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextReadSettings"
+                                    }
+                                },
+                                "sink": {
+                                    "type": "SqlPoolSink",
+                                    "allowCopyCommand": true
+                                },
+                                "enableStaging": false
+                            },
+                            "inputs": [
+                                {
+                                    "referenceName": "DataLakeCSV",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "FilePath": {
+                                            "value": "/tmp/sagedata/@{pipeline().RunId}/variables('LOCATION_ID')",
+                                            "type": "Expression"
+                                        },
+                                        "FileName": "Bankreconciliation_response_from_sage.csv"
+                                    }
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "referenceName": "amerivetdspDataWarehouse",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "SchemaName": {
+                                            "value": "/tmp/sagedata/@{pipeline().RunId}/@{item().Account_number}",
+                                            "type": "Expression"
+                                        },
+                                        "TableName": "sage_chk_acct_recon"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "name": "Email Failure Alerts",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [
+                                {
+                                    "activity": "failed_get_trans_xml",
+                                    "dependencyConditions": [
+                                        "Completed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "Email Failure Alerts",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "globalVar_Environment": "Dev",
+                                    "globalVar_Failure_Recipient": "ramkumar.gudivada@amerivet.com;kiran.batchu@amerivet.com",
+                                    "AssetName": {
+                                        "value": "@item().assetname",
+                                        "type": "Expression"
+                                    },
+                                    "PipelineName": {
+                                        "value": "@concat('''',pipeline().pipeline,'''')",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Email Failure Alerts_copy1",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [
+                                {
+                                    "activity": "failed_reconcilitaion_Api",
+                                    "dependencyConditions": [
+                                        "Completed"
+                                    ]
+                                },
+                                {
+                                    "activity": "failed_reconcilitaion_response_api",
+                                    "dependencyConditions": [
+                                        "Completed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "Email Failure Alerts",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "globalVar_Environment": "Dev",
+                                    "globalVar_Failure_Recipient": "ramkumar.gudivada@amerivet.com;kiran.batchu@amerivet.com;rashmi.bhandari@amerivet.com",
+                                    "AssetName": {
+                                        "value": "@item().assetname",
+                                        "type": "Expression"
+                                    },
+                                    "PipelineName": {
+                                        "value": "@concat('''',pipeline().pipeline,'''')",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Email Failure Alerts_copy1_copy1",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [
+                                {
+                                    "activity": "failed_get_bank_feed_response",
+                                    "dependencyConditions": [
+                                        "Completed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "Email Failure Alerts",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "globalVar_Environment": "Dev",
+                                    "globalVar_Failure_Recipient": "ramkumar.gudivada@amerivet.com;kiran.batchu@amerivet.com",
+                                    "AssetName": {
+                                        "value": "@item().assetname",
+                                        "type": "Expression"
+                                    },
+                                    "PipelineName": {
+                                        "value": "@concat('''',pipeline().pipeline,'''')",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Get GL Mapping",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "sender_pass",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    },
+                    {
+                        "activity": "user_pass",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "SqlPoolSource",
+                        "sqlReaderQuery": {
+                            "value": "@concat('select  top 1 M.BANKACCOUNTID ,T.Account_number,T.Account_Name ,T.Transaction_count,substring(M.BANKACCOUNTID,1,5) as LOCATION_ID,\n(select distinct parentid  from ', pipeline().parameters.schema, '.sage_loc where entity = substring(M.BANKACCOUNTID,1,5) and parentid is not null ) as parentid\n from  (select  Acct_No as Account_number ,Acct_name as Account_Name ,count(1) as transaction_count  from ', pipeline().parameters.schema, '.vw_bank_base_Transactions_status where txn_status <>''Processed'' and month(transaction_as_of_date) = ',formatDateTime(pipeline().parameters.MONTHENDDATE,'MM') ,' and year(transaction_as_of_date) = ',formatDateTime(pipeline().parameters.MONTHENDDATE,'yyyy'),' group by Acct_No,Acct_Name )T \nleft join ', pipeline().parameters.schema, '.vw_sage_chk_acct M on BANKACCOUNTNO =T.Account_number where M.BANKACCOUNTID is NOT  NULL \nand  substring(M.BANKACCOUNTID,1,5) not in (',pipeline().parameters.exclude_loc,')\n\n order by M.BANKACCOUNTID')",
+                            "type": "Expression"
+                        },
+                        "queryTimeout": "02:00:00"
+                    },
+                    "dataset": {
+                        "referenceName": "amerivetdspDataWarehouse",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "SchemaName": "@pipeline().parameters.schema",
+                            "TableName": "bank_base_Transactions"
+                        }
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "sender secret",
+                "type": "WebActivity",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "GET",
+                    "url": "https://amerivetkeyvaultdev.vault.azure.net/secrets/fods-sage-sender-pass/7bbefe12caae4a24a04f640e77ecbc0b?api-version=7.4",
+                    "connectVia": {
+                        "referenceName": "AutoResolveIntegrationRuntime",
+                        "type": "IntegrationRuntimeReference"
+                    },
+                    "authentication": {
+                        "type": "MSI",
+                        "resource": "https://vault.azure.net"
+                    }
+                }
+            },
+            {
+                "name": "sender_pass",
+                "type": "SetVariable",
+                "dependsOn": [
+                    {
+                        "activity": "sender secret",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "variableName": "sender_pass",
+                    "value": {
+                        "value": "@activity('sender secret').output.value",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "user secret",
+                "type": "WebActivity",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "GET",
+                    "url": {
+                        "value": "https://amerivetkeyvaultdev.vault.azure.net/secrets/fods-sage-usr-pass/a04afbec6a4f4893a450ccb934331292?api-version=7.4",
+                        "type": "Expression"
+                    },
+                    "connectVia": {
+                        "referenceName": "AutoResolveIntegrationRuntime",
+                        "type": "IntegrationRuntimeReference"
+                    },
+                    "authentication": {
+                        "type": "MSI",
+                        "resource": "https://vault.azure.net"
+                    }
+                }
+            },
+            {
+                "name": "user_pass",
+                "type": "SetVariable",
+                "dependsOn": [
+                    {
+                        "activity": "user secret",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "variableName": "user_pass",
+                    "value": {
+                        "value": "@activity('user secret').output.value",
+                        "type": "Expression"
+                    }
+                }
+            }
+        ],
+        "parameters": {
+            "senderid": {
+                "type": "string",
+                "defaultValue": "amerivet"
+            },
+            "userid": {
+                "type": "string",
+                "defaultValue": "AVP_IT_WEBUSER1"
+            },
+            "env": {
+                "type": "string",
+                "defaultValue": "amerivet-sandbox"
+            },
+            "schema": {
+                "type": "string",
+                "defaultValue": "fods"
+            },
+            "txndate": {
+                "type": "string",
+                "defaultValue": "2025/02%"
+            },
+            "exclude_loc": {
+                "type": "string",
+                "defaultValue": "'E0308','E0095','E0021','E0260','E0001'"
+            },
+            "STMTENDINGDATE": {
+                "type": "string",
+                "defaultValue": "02/31/2025"
+            },
+            "CUTOFFDATE": {
+                "type": "string",
+                "defaultValue": "01/27/2025"
+            },
+            "FEEDDATE": {
+                "type": "string",
+                "defaultValue": "02/01/2025"
+            },
+            "MONTHENDDATE": {
+                "type": "string",
+                "defaultValue": "2025-02-28"
+            }
+        },
+        "variables": {
+            "XML_DATA": {
+                "type": "String"
+            },
+            "Recnciliation_data": {
+                "type": "String"
+            },
+            "Session_id": {
+                "type": "String"
+            },
+            "Generate_bank_feed": {
+                "type": "String"
+            },
+            "Bank_feed_response": {
+                "type": "String"
+            },
+            "Get_Bank_reconciliation_response": {
+                "type": "String"
+            },
+            "START_TIME": {
+                "type": "String"
+            },
+            "END_TIME": {
+                "type": "String"
+            },
+            "Insert_audit": {
+                "type": "String"
+            },
+            "ID": {
+                "type": "String"
+            },
+            "Account_number": {
+                "type": "String"
+            },
+            "Account_Name": {
+                "type": "String"
+            },
+            "LOCATION_ID": {
+                "type": "String"
+            },
+            "Transaction_count": {
+                "type": "Integer"
+            },
+            "FAILED_END_TIME": {
+                "type": "String"
+            },
+            "FAILED_InSERT_SCRIPT": {
+                "type": "String"
+            },
+            "sender_pass": {
+                "type": "String"
+            },
+            "user_pass": {
+                "type": "String"
+            }
+        },
+        "folder": {
+            "name": "FODS/Bank/Reconciliation"
+        },
+        "annotations": [],
+        "lastPublishTime": "2024-09-11T18:51:59Z"
+    },
+    "type": "Microsoft.Synapse/workspaces/pipelines"
+}
